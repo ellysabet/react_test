@@ -2,12 +2,12 @@
 // firebaseConfig 값을 아래 객체에 그대로 붙여 넣으세요.
 // 서비스 계정 키는 사용하지 않습니다.
 const firebaseConfig = {
-  apiKey: "PASTE_FIREBASE_API_KEY",
-  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID",
-  appId: "PASTE_APP_ID",
+  apiKey: "AIzaSyB0nj8JLOBn-_YMghgkDZlP7x-BywOO4sk",
+  authDomain: "reacttest-844b0.firebaseapp.com",
+  projectId: "reacttest-844b0",
+  storageBucket: "reacttest-844b0.firebasestorage.app",
+  messagingSenderId: "536611151441",
+  appId: "1:536611151441:web:49bc7c54874f8cb9bc2270"
 };
 
 const COLLECTION_NAME = "feedback";
