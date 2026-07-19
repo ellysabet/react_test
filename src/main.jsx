@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import { addFeedback, loadFeedback } from "./firebase";
 
 const STORAGE_KEY = "deadline-command-plan-v3";
 const FORM_KEY = "deadline-command-form-v3";
@@ -34,6 +35,8 @@ function Icon({ name, size = 20 }) {
     bolt: <path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/>,
     shield: <><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></>,
     chevron: <path d="m9 18 6-6-6-6"/>,
+    message: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 9h8M8 13h5"/></>,
+    send: <><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></>,
   };
   return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -116,26 +119,27 @@ function App() {
 
   return (
     <div className="command-app">
-      <Header onNotify={requestNotification} onHome={() => setScreen(plan ? "dashboard" : "form")} />
+      <Header onNotify={requestNotification} onHome={() => setScreen(plan ? "dashboard" : "form")} onBoard={() => setScreen("board")} />
       <main className="main-stage">
         {screen === "form" && <InputScreen form={form} updateField={updateField} generatePlan={generatePlan} error={error} plan={plan} onBack={() => setScreen("dashboard")} now={now} />}
         {screen === "loading" && <LoadingScreen step={loadingStep} task={form.task} />}
         {screen === "dashboard" && plan && <Dashboard plan={plan} completed={completed} now={now} onNavigate={setScreen} onEdit={() => setScreen("form")} onReset={resetAll} onNotify={requestNotification} onDone={markDone} />}
         {screen === "timeline" && plan && <TimelineScreen plan={plan} completed={completed} now={now} onDone={markDone} onNavigate={setScreen} />}
         {screen === "tasks" && plan && <TaskScreen plan={plan} completed={completed} onDone={markDone} onNavigate={setScreen} />}
+        {screen === "board" && <BoardScreen showToast={showToast} />}
       </main>
-      {plan && screen !== "form" && screen !== "loading" && <BottomNav screen={screen} onNavigate={setScreen} />}
+      {screen !== "form" && screen !== "loading" && <BottomNav screen={screen} onNavigate={setScreen} hasPlan={Boolean(plan)} />}
       {toast && <div className="toast"><Icon name="bell"/><span>{toast}</span></div>}
       {alarmItem && <AlarmModal item={alarmItem} onDone={() => { markDone(alarmItem.index); setAlarmItem(null); }} onSnooze={() => snooze(alarmItem)} onDismiss={() => setAlarmItem(null)} />}
     </div>
   );
 }
 
-function Header({ onNotify, onHome }) {
+function Header({ onNotify, onHome, onBoard }) {
   return <header className="command-header">
     <button className="wordmark" onClick={onHome}><span className="command-sigil">C</span><span>DEADLINE COMMAND</span></button>
     <div className="header-status"><span className="status-dot"/> SYSTEM ONLINE</div>
-    <button className="icon-button" onClick={onNotify} aria-label="알림 켜기"><Icon name="bell"/></button>
+    <div className="header-tools"><button className="icon-button" onClick={onBoard} aria-label="사용자 의견 게시판"><Icon name="message"/></button><button className="icon-button" onClick={onNotify} aria-label="알림 켜기"><Icon name="bell"/></button></div>
   </header>;
 }
 
@@ -237,7 +241,66 @@ function TaskScreen({ plan, completed, onDone, onNavigate }) {
 }
 
 function PageTitle({ kicker, title, subtitle }) { return <div className="page-title"><p className="kicker">{kicker}</p><h1>{title}</h1><span>{subtitle}</span></div>; }
-function BottomNav({ screen, onNavigate }) { const items=[["dashboard","grid","대시보드"],["timeline","calendar","타임테이블"],["tasks","list","할 일 목록"]]; return <nav className="bottom-nav">{items.map(([id,icon,label])=><button className={screen===id?"active":""} onClick={()=>onNavigate(id)} key={id}><Icon name={icon}/><span>{label}</span></button>)}</nav>; }
+function BottomNav({ screen, onNavigate, hasPlan }) { const items=[...(hasPlan ? [["dashboard","grid","대시보드"],["timeline","calendar","타임테이블"],["tasks","list","할 일 목록"]] : []),["board","message","사용자 의견"]]; return <nav className="bottom-nav">{items.map(([id,icon,label])=><button className={screen===id?"active":""} onClick={()=>onNavigate(id)} key={id}><Icon name={icon}/><span>{label}</span></button>)}</nav>; }
+function BoardScreen({ showToast }) {
+  const [author, setAuthor] = useState("");
+  const [content, setContent] = useState("");
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [boardError, setBoardError] = useState("");
+
+  async function refresh() {
+    setLoading(true); setBoardError("");
+    try { setPosts(await loadFeedback()); }
+    catch (err) { setBoardError(err.message || "게시글을 불러오지 못했습니다."); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function submitPost(event) {
+    event.preventDefault();
+    if (!content.trim()) return setBoardError("의견 내용을 입력하세요.");
+    setSaving(true); setBoardError("");
+    try {
+      await addFeedback({ author: author.trim() || "익명", content: content.trim() });
+      setContent("");
+      await refresh();
+      showToast("의견이 등록되었습니다.");
+    } catch (err) { setBoardError(err.message || "의견 등록에 실패했습니다."); }
+    finally { setSaving(false); }
+  }
+
+  return <section className="board-screen screen-enter">
+    <PageTitle kicker="USER FEEDBACK CHANNEL" title="사용자 의견 게시판" subtitle="서비스 개선을 위한 의견을 남겨주세요" />
+    <div className="board-layout">
+      <form className="feedback-form" onSubmit={submitPost}>
+        <div className="section-label"><span>NEW FEEDBACK</span><small>FIRESTORE CONNECTED</small></div>
+        <label><span>NAME / 작성자</span><input value={author} onChange={(e)=>setAuthor(e.target.value)} maxLength="30" placeholder="입력하지 않으면 익명" /></label>
+        <label><span>MESSAGE / 의견</span><textarea value={content} onChange={(e)=>setContent(e.target.value)} maxLength="1000" rows="7" placeholder="불편한 점, 개선 아이디어, 추가되었으면 하는 기능을 작성해 주세요." /></label>
+        <div className="feedback-count">{content.length} / 1000</div>
+        {boardError && <div className="form-error"><Icon name="alert"/>{boardError}</div>}
+        <button className="generate-button" type="submit" disabled={saving}><span><Icon name="send"/>{saving ? "SAVING FEEDBACK..." : "REGISTER FEEDBACK"}</span><Icon name="arrow"/></button>
+        <p className="security-line"><Icon name="shield" size={15}/> Firebase 웹 SDK만 사용하며 서비스 계정 키는 사용하지 않습니다.</p>
+      </form>
+      <section className="feedback-list-panel">
+        <div className="section-label"><span>RECENT FEEDBACK</span><button onClick={refresh} disabled={loading}><Icon name="rotate" size={16}/> REFRESH</button></div>
+        {loading ? <div className="board-state"><span className="board-spinner"/>게시글을 불러오는 중입니다.</div> : posts.length === 0 ? <div className="board-state"><Icon name="message" size={30}/><b>아직 등록된 의견이 없습니다.</b><span>첫 번째 의견을 남겨주세요.</span></div> : <div className="feedback-list">{posts.map((post,index)=><article className="feedback-card" key={post.id}>
+          <div className="feedback-card-head"><span className="feedback-number">#{String(posts.length-index).padStart(3,"0")}</span><strong>{post.author || "익명"}</strong><time>{formatFirestoreDate(post.createdAt)}</time></div>
+          <p>{post.content}</p>
+        </article>)}</div>}
+      </section>
+    </div>
+  </section>;
+}
+
+function formatFirestoreDate(value) {
+  if (!value) return "방금 전";
+  const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+  return new Intl.DateTimeFormat("ko-KR", { year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" }).format(date);
+}
+
 function AlarmModal({ item, onDone, onSnooze, onDismiss }) { return <div className="alarm-overlay"><section className="alarm-modal"><button className="alarm-close" onClick={onDismiss}><Icon name="x"/></button><p className="kicker"><span className="status-dot"/> URGENT PRIORITY</p><div className="alarm-code">DEADLINE BREACH</div><h1>TIME IS UP</h1><div className="alarm-subject"><small>SUBJECT</small><strong>{item.title}</strong><p>{item.description}</p></div><button className="alarm-complete" onClick={onDone}><Icon name="check"/> MARK AS COMPLETE</button><button className="alarm-snooze" onClick={onSnooze}><Icon name="clock"/> SNOOZE 10 MIN</button></section></div>; }
 
 function readJson(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
