@@ -1,4 +1,4 @@
-const GEMINI_MODEL = "gemini-3.5-flash";
+const GEMINI_MODEL = "Gemini 3.1 Flash Lite";
 
 const responseSchema = {
   type: "object",
